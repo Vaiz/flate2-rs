@@ -222,13 +222,10 @@ enum GzState {
     End(Option<GzHeader>),
 }
 
-/// Resets the internal state of a `GzDecoder`.
-///
-/// Intended for use by the `read` module.
 pub fn reset_decoder_data<R>(decoder: &mut GzDecoder<R>) {
     decoder.state = GzState::Header(GzHeaderParser::new());
-    decoder.reader.reset();
-    decoder.reader.get_mut().reset_data();
+    decoder.reader.reset(); // reset CrcReader
+    crate::deflate::bufread::reset_decoder_data(decoder.reader.get_mut());
 }
 
 impl<R: BufRead> GzDecoder<R> {
