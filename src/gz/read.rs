@@ -180,6 +180,21 @@ impl<R> GzDecoder<R> {
     pub fn into_inner(self) -> R {
         self.inner.into_inner().into_inner()
     }
+
+    /// Resets the state of this decoder entirely, swapping out the input
+    /// stream for another.
+    ///
+    /// This will reset the internal state of this decoder and replace the
+    /// input stream with the one provided, returning the previous input
+    /// stream. Future data read from this decoder will be the decompressed
+    /// version of `r`'s data.
+    ///
+    /// Note that there may be currently buffered data when this function is
+    /// called, and in that case the buffered data is discarded.
+    pub fn reset(&mut self, r: R) -> R {
+        super::bufread::reset_decoder_data(&mut self.inner);
+        self.inner.get_mut().reset(r)
+    }
 }
 
 impl<R: Read> Read for GzDecoder<R> {

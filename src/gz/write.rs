@@ -287,6 +287,27 @@ impl<W: Write> GzDecoder<W> {
         Ok(self.inner.take_inner().into_inner())
     }
 
+    /// Resets the state of this decoder entirely, swapping out the output
+    /// stream for another.
+    ///
+    /// This will flush any pending data in the internal buffer to the output
+    /// stream, swap out the output stream, and then reset the internal state.
+    /// Future data written to this decoder will be decompressed into the
+    /// output stream `w`.
+    ///
+    /// # Errors
+    ///
+    /// This function will perform I/O to flush the stream, and if that I/O
+    /// returns an error then that will be returned from this function.
+    pub fn reset(&mut self, w: W) -> io::Result<W> {
+        self.inner.finish()?;
+        self.inner.data = Decompress::new(false);
+        self.crc_bytes.clear();
+        self.header_parser = GzHeaderParser::new();
+        let old_writer = self.inner.replace(CrcWriter::new(w));
+        Ok(old_writer.into_inner())
+    }
+
     fn finish_and_check_crc(&mut self) -> io::Result<()> {
         self.inner.finish()?;
 

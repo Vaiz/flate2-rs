@@ -222,6 +222,15 @@ enum GzState {
     End(Option<GzHeader>),
 }
 
+/// Resets the internal state of a `GzDecoder`.
+///
+/// Intended for use by the `read` module.
+pub fn reset_decoder_data<R>(decoder: &mut GzDecoder<R>) {
+    decoder.state = GzState::Header(GzHeaderParser::new());
+    decoder.reader.reset();
+    decoder.reader.get_mut().reset_data();
+}
+
 impl<R: BufRead> GzDecoder<R> {
     /// Creates a new decoder from the given reader, immediately parsing the
     /// gzip header.
@@ -275,6 +284,26 @@ impl<R> GzDecoder<R> {
     /// Consumes this decoder, returning the underlying reader.
     pub fn into_inner(self) -> R {
         self.reader.into_inner().into_inner()
+    }
+
+    /// Resets the state of this decoder entirely, swapping out the input
+    /// stream for another.
+    ///
+    /// This will reset the internal state of this decoder and replace the
+    /// input stream with the one provided, returning the previous input
+    /// stream. Future data read from this decoder will be the decompressed
+    /// version of `r`'s data.
+    pub fn reset(&mut self, r: R) -> R {
+        reset_decoder_data(self);
+        mem::replace(self.reader.get_mut().get_mut(), r)
+    }
+
+    /// Resets the state of this decoder's data
+    ///
+    /// This will reset the internal state of this decoder. It will continue
+    /// reading from the same stream.
+    pub fn reset_data(&mut self) {
+        reset_decoder_data(self);
     }
 }
 
@@ -478,5 +507,36 @@ mod test {
             "extra data is accessible in underlying buf-read"
         );
         assert_eq!(output, b"x");
+    }
+
+    #[test]
+    fn decode_with_reset() {
+        // Create two different compressed payloads
+        let data1 = b"Hello World";
+        let data2 = b"Goodbye World";
+
+        let compressed1 = {
+            let mut e = write::GzEncoder::new(Vec::new(), Compression::default());
+            e.write_all(data1).unwrap();
+            e.finish().unwrap()
+        };
+
+        let compressed2 = {
+            let mut e = write::GzEncoder::new(Vec::new(), Compression::default());
+            e.write_all(data2).unwrap();
+            e.finish().unwrap()
+        };
+
+        // Create decoder and decode first payload
+        let mut decoder = GzDecoder::new(compressed1.as_slice());
+        let mut output = Vec::new();
+        decoder.read_to_end(&mut output).unwrap();
+        assert_eq!(output, data1);
+
+        // Reset with second payload and decode
+        decoder.reset(compressed2.as_slice());
+        output.clear();
+        decoder.read_to_end(&mut output).unwrap();
+        assert_eq!(output, data2);
     }
 }
